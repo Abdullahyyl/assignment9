@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { queryBooks, getBookById } from "./booksStore.js";
-import { parseId } from "./validate.js";
+import { parseId, parseListQuery } from "./validate.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,7 +19,9 @@ function sendError(res, status, message) {
 // --- Books -------------------------------------------------------------
 
 app.get("/api/books", async (req, res) => {
-  const books = await queryBooks({ order: "asc", limit: 50, page: 1 });
+  const parsed = parseListQuery(req.query);
+  if (parsed.error) return sendError(res, 400, parsed.error);
+  const books = await queryBooks(parsed.options);
   res.json(books);
 });
 
