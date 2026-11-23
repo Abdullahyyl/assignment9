@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
-import { queryBooks, getBookById } from "./booksStore.js";
-import { parseId, parseListQuery } from "./validate.js";
+import { queryBooks, getBookById, createBook } from "./booksStore.js";
+import { parseId, isPlainObject, validateBook, parseListQuery } from "./validate.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,6 +31,20 @@ app.get("/api/books/:id", async (req, res) => {
   const book = await getBookById(id);
   if (!book) return sendError(res, 404, `Book ${id} not found`);
   res.json(book);
+});
+
+app.post("/api/books", async (req, res) => {
+  if (!isPlainObject(req.body)) {
+    return sendError(res, 400, "Request body must be a JSON object");
+  }
+  const { value, error } = validateBook(req.body);
+  if (error) return sendError(res, 400, error);
+
+  const result = await createBook(value);
+  if (result.conflict) {
+    return sendError(res, 409, "A book with this title and author already exists");
+  }
+  res.status(201).location(`/api/books/${result.book.id}`).json(result.book);
 });
 
 app.listen(PORT, () => {
