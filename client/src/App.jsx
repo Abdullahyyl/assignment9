@@ -1,5 +1,5 @@
-﻿import { useEffect, useState } from "react";
-import { listBooks, createBook, replaceBook } from "./api/books.js";
+import { useEffect, useState } from "react";
+import { listBooks, createBook, replaceBook, patchBook, deleteBook } from "./api/books.js";
 import Filters from "./components/Filters.jsx";
 import BookList from "./components/BookList.jsx";
 import BookForm from "./components/BookForm.jsx";
@@ -18,6 +18,8 @@ export default function App() {
   const [formKey, setFormKey] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
   // A new request whenever a filter changes. The cleanup aborts the previous
   // request so an old response can never overwrite a newer one.
@@ -61,8 +63,38 @@ export default function App() {
     }
   }
 
-  function handleEdit(book) {
-    setFormError(null);
+  async function runOnBook(book, action) {
+    setBusyId(book.id);
+    setActionError(null);
+    try {
+      await action();
+      refresh();
+    } catch (error) {
+      setActionError(error.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // PATCH: only the changed fields. Unchecking "read" also clears the rating.
+  function handleToggleRead(book) {
+    const changes = book.read ? { read: false, rating: null } : { read: true };
+    return runOnBook(book, () => patchBook(book.id, changes));
+  }
+
+  function handleRate(book, value) {
+    const rating = value === "" ? null : Number(value);
+    return runOnBook(book, () => patchBook(book.id, { rating }));
+  }
+
+  function handleDelete(book) {
+    return runOnBook(book, async () => {
+      await deleteBook(book.id);
+      if (editing?.id === book.id) setEditing(null);
+    });
+  }
+
+  function handleEdit(book) {    setFormError(null);
     setEditing(book);
     setFormKey((key) => key + 1);
   }
@@ -77,7 +109,17 @@ export default function App() {
     <div className="app">
       <h1>Reading List</h1>
       <Filters filters={filters} onChange={setFilters} />
-      <BookList books={books} loading={loading} error={loadError} onEdit={handleEdit} />
+      {actionError && <p role="alert">{actionError}</p>}
+      <BookList
+        books={books}
+        loading={loading}
+        error={loadError}
+        busyId={busyId}
+        onToggleRead={handleToggleRead}
+        onRate={handleRate}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+      />
       <BookForm
         key={formKey}
         book={editing}
