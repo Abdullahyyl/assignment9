@@ -1,8 +1,16 @@
 import { useEffect, useState } from "react";
-import { listBooks, createBook, replaceBook, patchBook, deleteBook } from "./api/books.js";
+import {
+  listBooks,
+  getStats,
+  createBook,
+  replaceBook,
+  patchBook,
+  deleteBook,
+} from "./api/books.js";
 import Filters from "./components/Filters.jsx";
 import BookList from "./components/BookList.jsx";
 import BookForm from "./components/BookForm.jsx";
+import StatsPanel from "./components/StatsPanel.jsx";
 
 const INITIAL_FILTERS = { q: "", genre: "", read: "", sort: "", order: "asc" };
 
@@ -11,7 +19,9 @@ export default function App() {
   const [books, setBooks] = useState(null); // null = not loaded yet
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
-  // bumped after every confirmed change so the list is requested again
+  const [stats, setStats] = useState(null);
+  const [statsError, setStatsError] = useState(null);
+  // bumped after every confirmed change so list and stats are requested again
   const [reloadKey, setReloadKey] = useState(0);
 
   const [editing, setEditing] = useState(null);
@@ -39,6 +49,21 @@ export default function App() {
       });
     return () => controller.abort();
   }, [filters, reloadKey]);
+
+  // Statistics are requested again after every confirmed change (reloadKey)
+  useEffect(() => {
+    const controller = new AbortController();
+    getStats(controller.signal)
+      .then((data) => {
+        setStats(data);
+        setStatsError(null);
+      })
+      .catch((error) => {
+        if (error.name === "AbortError") return;
+        setStatsError(error.message);
+      });
+    return () => controller.abort();
+  }, [reloadKey]);
 
   const refresh = () => setReloadKey((key) => key + 1);
 
@@ -94,7 +119,8 @@ export default function App() {
     });
   }
 
-  function handleEdit(book) {    setFormError(null);
+  function handleEdit(book) {
+    setFormError(null);
     setEditing(book);
     setFormKey((key) => key + 1);
   }
@@ -108,6 +134,7 @@ export default function App() {
   return (
     <div className="app">
       <h1>Reading List</h1>
+      <StatsPanel stats={stats} error={statsError} />
       <Filters filters={filters} onChange={setFilters} />
       {actionError && <p role="alert">{actionError}</p>}
       <BookList
