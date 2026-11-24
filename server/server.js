@@ -1,7 +1,13 @@
 import express from "express";
 import cors from "cors";
-import { queryBooks, getBookById, createBook } from "./booksStore.js";
-import { parseId, isPlainObject, validateBook, parseListQuery } from "./validate.js";
+import { queryBooks, getBookById, createBook, replaceBook } from "./booksStore.js";
+import {
+  parseId,
+  isPlainObject,
+  validateBook,
+  pickBookFields,
+  parseListQuery,
+} from "./validate.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +51,49 @@ app.post("/api/books", async (req, res) => {
     return sendError(res, 409, "A book with this title and author already exists");
   }
   res.status(201).location(`/api/books/${result.book.id}`).json(result.book);
+});
+
+app.put("/api/books/:id", async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) return sendError(res, 400, "id must be a positive integer");
+  if (!isPlainObject(req.body)) {
+    return sendError(res, 400, "Request body must be a JSON object");
+  }
+  const { value, error } = validateBook(req.body);
+  if (error) return sendError(res, 400, error);
+
+  const result = await replaceBook(id, value);
+  if (result.notFound) return sendError(res, 404, `Book ${id} not found`);
+  if (result.conflict) {
+    return sendError(res, 409, "A book with this title and author already exists");
+  }
+  res.json(result.book);
+});
+
+app.patch("/api/books/:id", async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) return sendError(res, 400, "id must be a positive integer");
+  if (!isPlainObject(req.body)) {
+    return sendError(res, 400, "Request body must be a JSON object");
+  }
+  const changes = pickBookFields(req.body);
+  if (Object.keys(changes).length === 0) {
+    return sendError(res, 400, "Send at least one of: title, author, year, genre, read, rating");
+  }
+
+  const existing = await getBookById(id);
+  if (!existing) return sendError(res, 404, `Book ${id} not found`);
+
+  // the merged book must pass the same validation as a complete book
+  const { value, error } = validateBook({ ...existing, ...changes });
+  if (error) return sendError(res, 400, error);
+
+  const result = await replaceBook(id, value);
+  if (result.notFound) return sendError(res, 404, `Book ${id} not found`);
+  if (result.conflict) {
+    return sendError(res, 409, "A book with this title and author already exists");
+  }
+  res.json(result.book);
 });
 
 app.listen(PORT, () => {
