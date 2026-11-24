@@ -1,6 +1,13 @@
 import express from "express";
 import cors from "cors";
-import { queryBooks, getBookById, createBook, replaceBook } from "./booksStore.js";
+import {
+  queryBooks,
+  getAllBooks,
+  getBookById,
+  createBook,
+  replaceBook,
+  deleteBook,
+} from "./booksStore.js";
 import {
   parseId,
   isPlainObject,
@@ -94,6 +101,36 @@ app.patch("/api/books/:id", async (req, res) => {
     return sendError(res, 409, "A book with this title and author already exists");
   }
   res.json(result.book);
+});
+
+app.delete("/api/books/:id", async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) return sendError(res, 400, "id must be a positive integer");
+  const deleted = await deleteBook(id);
+  if (!deleted) return sendError(res, 404, `Book ${id} not found`);
+  res.status(204).end();
+});
+
+// --- Statistics: computed from the current data on every request -------
+
+app.get("/api/stats", async (req, res) => {
+  const books = await getAllBooks();
+  const rated = books.filter((book) => book.rating !== null);
+  const byGenre = {};
+  for (const book of books) {
+    byGenre[book.genre] = (byGenre[book.genre] ?? 0) + 1;
+  }
+  const readCount = books.filter((book) => book.read).length;
+  res.json({
+    total: books.length,
+    read: readCount,
+    unread: books.length - readCount,
+    averageRating:
+      rated.length === 0
+        ? null
+        : Math.round((rated.reduce((sum, book) => sum + book.rating, 0) / rated.length) * 100) / 100,
+    byGenre,
+  });
 });
 
 app.listen(PORT, () => {
