@@ -31,7 +31,7 @@ export default function App() {
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState(null);
 
-  // A new request whenever a filter changes. The cleanup aborts the previous
+  // List: a new request whenever a filter changes. The cleanup aborts the previous
   // request so an old response can never overwrite a newer one.
   useEffect(() => {
     const controller = new AbortController();
@@ -50,7 +50,6 @@ export default function App() {
     return () => controller.abort();
   }, [filters, reloadKey]);
 
-  // Statistics are requested again after every confirmed change (reloadKey)
   useEffect(() => {
     const controller = new AbortController();
     getStats(controller.signal)
@@ -82,7 +81,7 @@ export default function App() {
       setFormKey((key) => key + 1);
       refresh();
     } catch (error) {
-      setFormError(error.message); // the server's own message
+      setFormError(error.message);
     } finally {
       setSubmitting(false);
     }
@@ -134,27 +133,35 @@ export default function App() {
   return (
     <div className="app">
       <h1>Reading List</h1>
-      <StatsPanel stats={stats} error={statsError} />
-      <Filters filters={filters} onChange={setFilters} />
-      {actionError && <p role="alert">{actionError}</p>}
-      <BookList
-        books={books}
-        loading={loading}
-        error={loadError}
-        busyId={busyId}
-        onToggleRead={handleToggleRead}
-        onRate={handleRate}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-      />
-      <BookForm
-        key={formKey}
-        book={editing}
-        submitting={submitting}
-        error={formError}
-        onSubmit={handleFormSubmit}
-        onCancel={handleCancelEdit}
-      />
+
+      <div className="layout">
+        <main>
+          <Filters filters={filters} onChange={setFilters} />
+          {actionError && <p role="alert">{actionError}</p>}
+          <BookList
+            books={books}
+            loading={loading}
+            error={loadError}
+            busyId={busyId}
+            onToggleRead={handleToggleRead}
+            onRate={handleRate}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
+        </main>
+
+        <div className="side">
+          <StatsPanel stats={stats} error={statsError} />
+          <BookForm
+            key={formKey}
+            book={editing}
+            submitting={submitting}
+            error={formError}
+            onSubmit={handleFormSubmit}
+            onCancel={handleCancelEdit}
+          />
+        </div>
+      </div>
     </div>
   );
 }
