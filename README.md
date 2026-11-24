@@ -217,3 +217,50 @@ Access-Control-Allow-Headers: content-type
 ```
 
 The server answers `204` and `Access-Control-Allow-Origin: http://localhost:5173` (its single allowed origin, never `*`), with the allowed methods and the requested headers. In the browser this request is visible in DevTools, Network tab, as an `OPTIONS` entry before the `POST`.
+
+## Reasoning questions
+
+### 1. Parameters
+
+The `id` identifies *which* resource I mean, so it is part of the path (`/api/books/3`): the path plus the method is the address of one book. `genre` and `sort` do not identify a book, they only shape a *view* of the collection (filter, order), so they are optional query parameters. If the `id` were in the query string (`/api/books?id=3`), the path would no longer name the resource, the same route would sometimes return a list and sometimes a single book, and caching and routing (`PUT`/`DELETE` of one book) would become awkward.
+
+### 2. Body parsing (experiment)
+
+I moved `app.use(express.json())` below the routes and sent a valid `POST /api/books`. In Express 5, `req.body` stayed `undefined` because no parser ran before the handler, so my check "body must be a JSON object" answered `400`. Without that check the handler would have crashed trying to read fields of `undefined` and answered `500`. Middleware runs in registration order, so the parser must be registered before the routes that need it.
+
+### 3. One response (experiment)
+
+I removed the `return` before the early `404` in `GET /api/books/:id` and requested `/api/books/999`. The client still received the `404` JSON, but the server printed `Error [ERR_HTTP_HEADERS_SENT]: Cannot set headers after they are sent to the client`. Without `return` the function does not stop: after sending the `404` it continues to `res.json(book)` with `book === null` and tries to send a second response, which Node does not allow.
+
+### 4. PUT and PATCH
+
+`PATCH` is better when the user only changes one thing, like ticking "read" or choosing a rating in my list: I send `{ "read": true }` and nothing else can be overwritten by accident (and two people changing different fields do not erase each other). `PUT` is better for the edit form, where the user sees and submits the complete book; the body is the whole new version, so fields I leave out go back to their defaults (as shown with book 6 in the curl evidence).
+
+### 5. CORS (experiment)
+
+I started the server with `CLIENT_ORIGIN=http://wrong.example` and sent a `POST` with `Origin: http://localhost:5173`. The server processed it normally (`201 Created`, the book was created), but the response carried `Access-Control-Allow-Origin: http://wrong.example`, which does not match the page's origin, so a browser refuses to give the response to the page and prints a CORS policy error in the console. So the server does handle (and even executes) the request; the *browser* is the one that blocks reading the answer. `curl` still works because CORS is a rule enforced by browsers, not by servers: curl does not check the header at all.
+
+### 6. Validation
+
+The client-side checks are only for convenience; anyone can bypass my React form with curl, Postman or a modified client, and send anything. The server is the only part I control and the one that protects the data, so it must validate everything it receives. My client even sends the form values unchecked so that the real server messages (invalid year, duplicate book) are shown to the user.
+
+### 7. State
+
+I created a book (total 8) and restarted the server: the total was 7 again, the new book was gone. The data lives in the memory (a variable) of the running Node process, so it disappears when the process ends. To keep it I need persistent storage: a database, or at least a file written to disk.
+
+## Self-study notes
+
+- **`URLSearchParams`:** `buildQuery` in `client/src/api/books.js` creates a `URLSearchParams`, calls `set` for every non-empty filter and uses `toString()`, which percent-encodes the values (for example a space becomes `+`), so user input like `rock & roll` cannot break the URL.
+- **`localeCompare`:** the server sorts `title` and `author` with `a.localeCompare(b, undefined, { sensitivity: "base" })`, which compares alphabetically in a language-aware way and ignores case/accent differences instead of using the code-unit order of `<`.
+- **`import.meta.env` and `VITE_`:** Vite replaces `import.meta.env.VITE_API_URL` at build time with the value from `.env`. Only variables starting with `VITE_` are exposed to the browser code; the prefix prevents accidentally publishing other secrets that are present in the environment. Changing `.env` needs a dev server restart.
+- **`204` in Express 5:** a `204` must have no body, so I use `res.status(204).end()`. On the client, `request()` checks `response.status === 204` and returns `null` before trying `response.json()`, which would fail on an empty body.
+- **Cancelling `fetch`:** I create an `AbortController` in the effect, pass `controller.signal` to `fetch` and call `controller.abort()` in the cleanup. An aborted fetch rejects with an error whose `name` is `AbortError`; I recognise it and ignore it instead of showing an error, so a stale response never overwrites a newer one.
+- **Express 5 details:** rejected promises of `async` handlers are forwarded to the error middleware automatically (no `try/catch` or `next` needed), the 404 fallback is `app.use("/api", ...)` instead of the old `app.get("*")`, and `req.body` is `undefined` when no body was parsed.
+- **Immutable store:** `booksStore.js` always creates a new array (`[...books, book]`, `map`, `filter`) and a new object (`{ ...existing }`) and reassigns the variable; sorting happens on a copy.
+
+## Challenges
+
+- Deciding where each check belongs: invalid `id` is `400`, missing book is `404`, duplicate is `409`, and the `PATCH` has to validate the *merged* book.
+- Keeping the duplicate check and the write in the same step of the store (no `await` between them) so two concurrent requests cannot both create the same book.
+- Making the stale-response protection work: every change of a filter aborts the previous request.
+- Not updating the screen before the server confirms: after each change the client waits for the response and then requests the list and statistics again.
