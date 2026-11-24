@@ -1,4 +1,4 @@
-export default function BookItem({ book }) {
+export default function BookItem({ book, onEdit }) {
   return (
     <li className="book">
       <div className="book-main">
@@ -9,6 +9,9 @@ export default function BookItem({ book }) {
       </div>
       <span>{book.read ? "Read" : "Unread"}</span>
       <span>Rating: {book.rating ?? "-"}</span>
+      <button type="button" onClick={() => onEdit(book)}>
+        Edit
+      </button>
     </li>
   );
 }
