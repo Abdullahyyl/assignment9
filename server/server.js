@@ -133,6 +133,33 @@ app.get("/api/stats", async (req, res) => {
   });
 });
 
+// Deliberately throws inside an async handler to prove the error middleware works
+// (documented in the README).
+app.get("/api/crash", async () => {
+  await Promise.resolve();
+  throw new Error("Deliberate crash for testing the error handler");
+});
+
+// --- 404 fallback for /api (registered after all routes, Express 5 safe) ---
+
+app.use("/api", (req, res) => {
+  sendError(res, 404, "Not found");
+});
+
+// --- Error-handling middleware (four parameters, registered last) ---
+
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (err.type === "entity.parse.failed") {
+    return sendError(res, 400, "Malformed JSON in request body");
+  }
+  if (err.type === "entity.too.large") {
+    return sendError(res, 413, "Request body is too large");
+  }
+  console.error(err); // full error stays on the server
+  sendError(res, 500, "Something went wrong");
+});
+
 app.listen(PORT, () => {
   console.log(`API running at http://localhost:${PORT} (allowed origin: ${CLIENT_ORIGIN})`);
 });
